@@ -19,7 +19,7 @@ MCPorter helps you lean into the "code execution" workflows highlighted in Anthr
 - **Zero-config discovery.** `createRuntime()` merges your home config (`~/.mcporter/mcporter.json[c]`) first, then `config/mcporter.json`, plus Cursor/Claude/Codex/Windsurf/OpenCode/VS Code imports, expands `${ENV}` placeholders, and pools connections so you can reuse transports across multiple calls.
 - **One-command CLI generation.** `mcporter generate-cli` turns any MCP server definition into a ready-to-run CLI, with optional bundling/compilation and metadata for easy regeneration.
 - **Typed tool clients.** `mcporter emit-ts` emits `.d.ts` interfaces or ready-to-run client wrappers so agents/tests can call MCP servers with strong TypeScript types without hand-writing plumbing.
-- **Friendly composable API.** `createServerProxy()` exposes tools as ergonomic camelCase methods, automatically applies JSON-schema defaults, validates required arguments, and hands back a `CallResult` with `.text()`, `.markdown()`, `.json()`, and `.content()` helpers.
+- **Friendly composable API.** `createServerProxy()` exposes tools as ergonomic camelCase methods, automatically applies JSON-schema defaults, validates required arguments, and hands back a `CallResult` with `.text()`, `.markdown()`, `.json()`, `.images()`, and `.content()` helpers.
 - **OAuth and stdio ergonomics.** Built-in OAuth caching, log tailing, and stdio wrappers let you work with HTTP, SSE, and stdio transports from the same interface.
 - **Ad-hoc connections.** Point the CLI at *any* MCP endpoint (HTTP or stdio) without touching config, then persist it later if you want. Hosted MCPs that expect a browser login (Supabase, Vercel, etc.) are auto-detected—just run `mcporter auth <url>` and the CLI promotes the definition to OAuth on the fly. See [docs/adhoc.md](docs/adhoc.md).
 
@@ -146,6 +146,7 @@ Helpful flags:
 - `--oauth-timeout <ms>` -- shorten/extend the OAuth browser wait; same as `MCPORTER_OAUTH_TIMEOUT_MS` / `MCPORTER_OAUTH_TIMEOUT`.
 - `--tail-log` -- stream the last 20 lines of any log files referenced by the tool response.
 - `--output <format>` or `--raw` -- control formatted output (defaults to pretty-printed auto detection).
+- `--save-images <dir>` (on `mcporter call`) -- save MCP image content blocks to files in the given directory (opt-in; stdout output shape stays unchanged).
 - `--raw-strings` (on `mcporter call`) -- keep numeric-looking argument values (for `key=value`, `key:value`, and trailing positional values) as strings.
 - `--no-coerce` (on `mcporter call`) -- keep all `key=value` and positional values as raw strings (disables bool/null/number/JSON coercion).
 - `--json` (on `mcporter list`) -- emit JSON summaries/counts instead of text. Multi-server runs report per-server statuses, counts, and connection issues; single-server runs include the full tool metadata.
@@ -275,7 +276,7 @@ Friendly ergonomics baked into the proxy and result helpers:
 
 - Property names map from camelCase to kebab-case tool names (`takeSnapshot` -> `take_snapshot`).
 - Positional arguments map onto schema-required fields automatically, and option objects respect JSON-schema defaults.
-- Results are wrapped in a `CallResult`, so you can choose `.text()`, `.markdown()`, `.json()`, `.content()`, or access `.raw` when you need the full envelope.
+- Results are wrapped in a `CallResult`, so you can choose `.text()`, `.markdown()`, `.json()`, `.images()`, `.content()`, or access `.raw` when you need the full envelope.
 
 Drop down to `runtime.callTool()` whenever you need explicit control over arguments, metadata, or streaming options.
 

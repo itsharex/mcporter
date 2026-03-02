@@ -18,6 +18,7 @@ export interface CallArgsParseResult {
   timeoutMs?: number;
   ephemeral?: EphemeralServerSpec;
   rawStrings?: boolean;
+  saveImagesDir?: string;
 }
 
 type CoercionMode = 'default' | 'raw-strings' | 'none';
@@ -66,6 +67,15 @@ export function parseCallArguments(args: string[]): CallArgsParseResult {
     if (token === '--tail-log') {
       result.tailLog = true;
       index += 1;
+      continue;
+    }
+    if (token === '--save-images') {
+      const value = args[index + 1];
+      if (!value) {
+        throw new Error('--save-images requires a directory path.');
+      }
+      result.saveImagesDir = value;
+      index += 2;
       continue;
     }
     if (token === '--yes') {

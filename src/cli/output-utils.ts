@@ -142,6 +142,9 @@ export function saveCallImagesIfRequested<T>(wrapped: CallResult<T>, outputDir: 
 function writeImages(images: ImageContent[], outputDir: string): void {
   for (let i = 0; i < images.length; i++) {
     const img = images[i];
+    if (!img) {
+      continue;
+    }
     const ext = extensionFromMimeType(img.mimeType);
     const outputPath = resolveImageOutputPath(outputDir, i + 1, ext);
     try {

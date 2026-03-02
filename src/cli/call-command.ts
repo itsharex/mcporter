@@ -12,7 +12,7 @@ import {
 import { buildConnectionIssueEnvelope } from './json-output.js';
 import { handleList } from './list-command.js';
 import type { OutputFormat } from './output-utils.js';
-import { printCallOutput, tailLogIfRequested } from './output-utils.js';
+import { printCallOutput, saveCallImagesIfRequested, tailLogIfRequested } from './output-utils.js';
 import { dumpActiveHandles } from './runtime-debug.js';
 import { dimText, redText, yellowText } from './terminal.js';
 import { resolveCallTimeout, withTimeout } from './timeouts.js';
@@ -107,6 +107,7 @@ export async function handleCall(
 
   const { callResult: wrapped } = wrapCallResult(result);
   printCallOutput(wrapped, result, parsed.output);
+  saveCallImagesIfRequested(wrapped, parsed.saveImagesDir);
   tailLogIfRequested(result, parsed.tailLog);
   dumpActiveHandles('after call (formatted result)');
 }
@@ -130,6 +131,7 @@ export function printCallHelp(): void {
     'Runtime flags:',
     '  --timeout <ms>         Override the call timeout.',
     '  --output text|markdown|json|raw  Control formatting.',
+    '  --save-images <dir>    Save image content blocks to a directory.',
     '  --raw-strings          Keep numeric-looking argument values as strings.',
     '  --no-coerce            Keep all key/value and positional arguments as raw strings.',
     '  --tail-log             Stream returned log handles.',

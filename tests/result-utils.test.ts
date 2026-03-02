@@ -74,6 +74,40 @@ describe('createCallResult text extraction', () => {
   });
 });
 
+describe('createCallResult image extraction', () => {
+  it('extracts image blocks from content', () => {
+    const response = {
+      content: [
+        { type: 'image', mimeType: 'image/png', data: 'aGVsbG8=' },
+        { type: 'image', mimeType: 'image/jpeg', data: 'd29ybGQ=' },
+      ],
+    };
+    const result = createCallResult(response);
+    expect(result.images()).toEqual([
+      { mimeType: 'image/png', data: 'aGVsbG8=' },
+      { mimeType: 'image/jpeg', data: 'd29ybGQ=' },
+    ]);
+  });
+
+  it('extracts image blocks nested under raw.content', () => {
+    const response = {
+      raw: {
+        content: [{ type: 'image', data: 'aGVsbG8=' }],
+      },
+    };
+    const result = createCallResult(response);
+    expect(result.images()).toEqual([{ mimeType: 'image/png', data: 'aGVsbG8=' }]);
+  });
+
+  it('returns null when no images exist', () => {
+    const response = {
+      content: [{ type: 'text', text: 'no image here' }],
+    };
+    const result = createCallResult(response);
+    expect(result.images()).toBeNull();
+  });
+});
+
 describe('createCallResult markdown extraction', () => {
   it('extracts markdown from content array', () => {
     const response = {

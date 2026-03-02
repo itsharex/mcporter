@@ -93,4 +93,13 @@ describe('parseCallArguments', () => {
     expect(typeof parsed.args.id).toBe('string');
     expect(parsed.positionalArgs).toEqual(['123']);
   });
+
+  it('captures --save-images output directory', () => {
+    const parsed = parseCallArguments(['--save-images', './tmp/images', 'server.tool']);
+    expect(parsed.saveImagesDir).toBe('./tmp/images');
+  });
+
+  it('throws when --save-images has no value', () => {
+    expect(() => parseCallArguments(['--save-images'])).toThrow(/--save-images requires a directory path/);
+  });
 });
