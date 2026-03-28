@@ -58,4 +58,30 @@ describe('config add flag parsing', () => {
     expect(entry.clientName).toBe('mcporter');
     expect(entry.oauthRedirectUrl).toBe('https://example.com/callback');
   });
+
+  it('accepts --args as an alias for stdio args', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await handleAddCommand({ loadOptions } as never, [
+      'stdio-example',
+      '--command',
+      'node',
+      '--args',
+      'server.js',
+      '--args',
+      '--port=3000',
+      '--dry-run',
+    ]);
+
+    const payloadLine = logSpy.mock.calls
+      .map((call) => call[0])
+      .find((msg) => typeof msg === 'string' && msg.trim().startsWith('{'));
+    logSpy.mockRestore();
+
+    expect(payloadLine).toBeDefined();
+    const payload = JSON.parse(String(payloadLine)) as Record<string, unknown>;
+    const entry = payload['stdio-example'] as Record<string, unknown>;
+    expect(entry.command).toBe('node');
+    expect(entry.args).toEqual(['server.js', '--port=3000']);
+  });
 });

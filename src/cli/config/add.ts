@@ -60,7 +60,9 @@ export async function handleAddCommand(options: ConfigCliOptions, args: string[]
   const hasCommandTarget = Boolean(entry.command ?? entry.executable);
 
   if (flags.args.length > 0 && !hasCommandTarget) {
-    throw new CliUsageError('--arg requires a stdio command (use --command, --stdio, or provide a positional target).');
+    throw new CliUsageError(
+      '--arg/--args requires a stdio command (use --command, --stdio, or provide a positional target).'
+    );
   }
 
   if (!hasHttpTarget && !hasCommandTarget) {
@@ -121,6 +123,7 @@ function extractAddFlags(args: string[]): AddFlags {
         args.splice(index, 2);
         continue;
       case '--arg':
+      case '--args':
         flags.args.push(requireValue(args, index, token));
         args.splice(index, 2);
         continue;

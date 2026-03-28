@@ -94,7 +94,7 @@ describe('mcporter config CLI', () => {
   });
   it('rejects stdio args without a command target', async () => {
     await expect(handleConfigCli(buildOptions({ configPath }), ['add', 'broken', '--arg', 'foo'])).rejects.toThrow(
-      '--arg requires a stdio command'
+      '--arg/--args requires a stdio command'
     );
   });
 
