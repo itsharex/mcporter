@@ -15,6 +15,10 @@ interface Options {
   readonly output?: string;
 }
 
+interface PackageJson {
+  readonly version?: string;
+}
+
 // parseArgs walks CLI flags and produces normalized build options.
 function parseArgs(argv: string[]): Options {
   let target: string | undefined;
@@ -57,10 +61,26 @@ function requireValue(flag: string, value: string | undefined): string {
   return value;
 }
 
+function readPackageVersion(projectRoot: string): string {
+  const pkgPath = path.join(projectRoot, 'package.json');
+  const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8')) as PackageJson;
+  if (!pkg.version) {
+    throw new Error(`package.json at ${pkgPath} is missing a version`);
+  }
+  return pkg.version;
+}
+
+export function createCompiledEntrypoint(projectRoot: string, version: string): string {
+  const cliPath = JSON.stringify(path.join(projectRoot, 'src', 'cli.ts'));
+  const embeddedVersion = JSON.stringify(version);
+  return [`process.env.MCPORTER_VERSION ??= ${embeddedVersion};`, `await import(${cliPath});`, ''].join('\n');
+}
+
 // main orchestrates the Bun compile flow for the mcporter binary.
 async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
   const projectRoot = path.join(fs.realpathSync(path.dirname(new URL(import.meta.url).pathname)), '..');
+  const version = readPackageVersion(projectRoot);
   const distDir = path.join(projectRoot, 'dist-bun');
   if (!fs.existsSync(distDir)) {
     fs.mkdirSync(distDir, { recursive: true });
@@ -70,7 +90,10 @@ async function main(): Promise<void> {
     ? path.resolve(options.output)
     : path.join(distDir, options.target ? `mcporter-${options.target}` : 'mcporter');
 
-  const buildArgs = ['build', path.join(projectRoot, 'src/cli.ts'), '--compile', '--outfile', outputPath];
+  const entryPath = path.join(distDir, '.mcporter-build-entry.ts');
+  fs.writeFileSync(entryPath, createCompiledEntrypoint(projectRoot, version), 'utf8');
+
+  const buildArgs = ['build', entryPath, '--compile', '--outfile', outputPath];
 
   if (options.minify) {
     buildArgs.push('--minify');
@@ -84,20 +107,24 @@ async function main(): Promise<void> {
 
   console.log(`Building mcporter binary → ${outputPath}`);
   const result = spawnSync('bun', buildArgs, { stdio: 'inherit' });
-  if (result.status !== 0) {
-    throw new Error(`bun build exited with status ${result.status ?? 'unknown'}`);
-  }
-
-  if (process.platform !== 'win32') {
-    fs.chmodSync(outputPath, 0o755);
-  }
-
   try {
-    const sizeBytes = fs.statSync(outputPath).size;
-    const human = formatSize(sizeBytes);
-    console.log(`✅ Built ${outputPath} (${human})`);
-  } catch {
-    console.log(`✅ Built ${outputPath}`);
+    if (result.status !== 0) {
+      throw new Error(`bun build exited with status ${result.status ?? 'unknown'}`);
+    }
+
+    if (process.platform !== 'win32') {
+      fs.chmodSync(outputPath, 0o755);
+    }
+
+    try {
+      const sizeBytes = fs.statSync(outputPath).size;
+      const human = formatSize(sizeBytes);
+      console.log(`✅ Built ${outputPath} (${human})`);
+    } catch {
+      console.log(`✅ Built ${outputPath}`);
+    }
+  } finally {
+    fs.rmSync(entryPath, { force: true });
   }
 }
 
@@ -114,12 +141,14 @@ function formatSize(bytes: number): string {
   return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
 }
 
-main().catch((error) => {
-  console.error('mcporter Bun build failed.');
-  if (error instanceof Error) {
-    console.error(error.message);
-  } else {
-    console.error(error);
-  }
-  process.exit(1);
-});
+if (import.meta.main) {
+  main().catch((error) => {
+    console.error('mcporter Bun build failed.');
+    if (error instanceof Error) {
+      console.error(error.message);
+    } else {
+      console.error(error);
+    }
+    process.exit(1);
+  });
+}
