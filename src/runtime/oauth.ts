@@ -20,6 +20,12 @@ export interface ConnectWithAuthOptions {
   recreateTransport?: (transport: OAuthCapableTransport) => Promise<OAuthCapableTransport>;
 }
 
+interface OAuthConnectState {
+  activeTransport: OAuthCapableTransport;
+  attempt: number;
+  hasCompletedAuthFlow: boolean;
+}
+
 export class OAuthTimeoutError extends Error {
   public readonly timeoutMs: number;
   public readonly serverName: string;
@@ -78,45 +84,58 @@ export async function connectWithAuth(
   options: ConnectWithAuthOptions = {}
 ): Promise<OAuthCapableTransport> {
   const { serverName, maxAttempts = 3, oauthTimeoutMs = DEFAULT_OAUTH_CODE_TIMEOUT_MS, recreateTransport } = options;
-  let activeTransport = transport;
-  let attempt = 0;
-  let hasCompletedAuthFlow = false;
+  const state: OAuthConnectState = {
+    activeTransport: transport,
+    attempt: 0,
+    hasCompletedAuthFlow: false,
+  };
 
   while (true) {
     try {
-      await client.connect(activeTransport);
-      return activeTransport;
+      return await attemptTransportConnect(client, state);
     } catch (error) {
       const unauthorized = isUnauthorizedError(error);
-      if (hasCompletedAuthFlow && !unauthorized) {
-        await closeReplacementTransport(transport, activeTransport);
-        throw markPostAuthConnectError(error);
+      if (!shouldRetryAuthorization(state, unauthorized, session)) {
+        await closeReplacementTransport(transport, state.activeTransport);
+        throw state.hasCompletedAuthFlow && !unauthorized ? markPostAuthConnectError(error) : error;
       }
-      if (!unauthorized || !session) {
-        await closeReplacementTransport(transport, activeTransport);
-        throw error;
-      }
-      attempt += 1;
-      if (attempt > maxAttempts) {
-        await closeReplacementTransport(transport, activeTransport);
-        throw hasCompletedAuthFlow ? markPostAuthConnectError(error) : error;
+      state.attempt += 1;
+      if (state.attempt > maxAttempts) {
+        await closeReplacementTransport(transport, state.activeTransport);
+        throw state.hasCompletedAuthFlow ? markPostAuthConnectError(error) : error;
       }
       logger.warn(`OAuth authorization required for '${serverName ?? 'unknown'}'. Waiting for browser approval...`);
       try {
-        activeTransport = await completeAuthorizationChallenge(activeTransport, session, logger, error, {
+        state.activeTransport = await completeAuthorizationChallenge(state.activeTransport, session, logger, error, {
           serverName,
           oauthTimeoutMs,
           recreateTransport,
         });
-        hasCompletedAuthFlow = true;
+        state.hasCompletedAuthFlow = true;
         logger.info('Authorization code accepted. Retrying connection...');
       } catch (authError) {
         logger.error('OAuth authorization failed while waiting for callback.', authError);
-        await closeReplacementTransport(transport, activeTransport);
+        await closeReplacementTransport(transport, state.activeTransport);
         throw markOAuthFlowError(authError);
       }
     }
   }
+}
+
+async function attemptTransportConnect(client: Client, state: OAuthConnectState): Promise<OAuthCapableTransport> {
+  await client.connect(state.activeTransport);
+  return state.activeTransport;
+}
+
+function shouldRetryAuthorization(
+  _state: OAuthConnectState,
+  unauthorized: boolean,
+  session: OAuthSession | undefined
+): session is OAuthSession {
+  if (!session || !unauthorized) {
+    return false;
+  }
+  return true;
 }
 
 async function closeReplacementTransport(

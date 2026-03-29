@@ -1,65 +1,13 @@
 import type { Client } from '@modelcontextprotocol/sdk/client';
 import { UnauthorizedError } from '@modelcontextprotocol/sdk/client/auth.js';
-import type { Transport, TransportSendOptions } from '@modelcontextprotocol/sdk/shared/transport.js';
-import type { JSONRPCMessage } from '@modelcontextprotocol/sdk/types.js';
 import { describe, expect, it, vi } from 'vitest';
-import type { Logger } from '../src/logging.js';
-import type { OAuthSession } from '../src/oauth.js';
 import { connectWithAuth, isOAuthFlowError, isPostAuthConnectError } from '../src/runtime/oauth.js';
-
-class MockTransport implements Transport {
-  public readonly calls: string[] = [];
-  public readonly close = vi.fn(async () => {});
-
-  constructor(private readonly finishAuthImpl?: (code: string) => Promise<void>) {}
-  async start(): Promise<void> {}
-  async send(_message: JSONRPCMessage, _options?: TransportSendOptions): Promise<void> {}
-  async finishAuth(code: string): Promise<void> {
-    this.calls.push(code);
-    if (this.finishAuthImpl) {
-      await this.finishAuthImpl(code);
-    }
-  }
-}
-
-function createLogger(): Logger {
-  return {
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-  };
-}
-
-function createPendingAuthorizationSession() {
-  const pendingResolvers: Array<(code: string) => void> = [];
-  const waitForAuthorizationCode = vi.fn(
-    () =>
-      new Promise<string>((resolve) => {
-        pendingResolvers.push(resolve);
-      })
-  );
-  const session: OAuthSession = {
-    provider: { waitForAuthorizationCode } as unknown as OAuthSession['provider'],
-    waitForAuthorizationCode,
-    close: vi.fn(async () => {}),
-  };
-  return {
-    session,
-    waitForAuthorizationCode,
-    pendingResolvers,
-    resolveNextCode: (code: string) => {
-      const resolve = pendingResolvers.shift();
-      if (!resolve) {
-        throw new Error(`Missing pending authorization resolver for '${code}'.`);
-      }
-      resolve(code);
-    },
-  };
-}
-
-async function flushAuthLoop(): Promise<void> {
-  await new Promise((resolve) => setImmediate(resolve));
-}
+import {
+  createLogger,
+  createPendingAuthorizationSession,
+  flushAuthLoop,
+  MockTransport,
+} from './helpers/runtime-test-helpers.js';
 
 describe('connectWithAuth', () => {
   it('waits for authorization code and retries connection', async () => {

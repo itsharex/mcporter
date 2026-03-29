@@ -6,6 +6,7 @@ import {
   parseKeyValueToken,
   shouldPromoteSelectorToCommand,
 } from './call-argument-values.js';
+import { buildUnknownCallFlagMessage } from './call-help.js';
 import { extractEphemeralServerFlags } from './ephemeral-flags.js';
 import { CliUsageError } from './errors.js';
 import { consumeOutputFormat } from './output-format.js';
@@ -39,6 +40,16 @@ interface FlagHandlerContext {
 
 type FlagHandler = (context: FlagHandlerContext) => number;
 
+interface ScannedCallTokens {
+  positional: string[];
+  literalPositional: string[];
+}
+
+interface CallExpressionResolution {
+  callExpressionProvidedServer: boolean;
+  callExpressionProvidedTool: boolean;
+}
+
 const FLAG_HANDLERS: Record<string, FlagHandler> = {
   '--server': handleServerFlag,
   '--mcp': handleServerFlag,
@@ -60,6 +71,15 @@ export function parseCallArguments(args: string[]): CallArgsParseResult {
   result.output = consumeOutputFormat(args, {
     defaultFormat: 'auto',
   });
+  const { positional, literalPositional } = scanCallTokens(args, result, flagState);
+  const { callExpressionProvidedServer, callExpressionProvidedTool } = applyLeadingCallExpression(positional, result);
+  resolveSelectorAndTool(positional, result, callExpressionProvidedServer, callExpressionProvidedTool);
+  applyTrailingArguments(positional, result, flagState);
+  appendLiteralPositionalArguments(literalPositional, result, flagState);
+  return result;
+}
+
+function scanCallTokens(args: string[], result: CallArgsParseResult, state: FlagParseState): ScannedCallTokens {
   const positional: string[] = [];
   const literalPositional: string[] = [];
   let index = 0;
@@ -75,70 +95,70 @@ export function parseCallArguments(args: string[]): CallArgsParseResult {
     }
     const flagHandler = FLAG_HANDLERS[token];
     if (flagHandler) {
-      index = flagHandler({ args, index, result, state: flagState });
+      index = flagHandler({ args, index, result, state });
       continue;
     }
     if (token.startsWith('--')) {
-      throw new CliUsageError(
-        [
-          `Unknown flag '${token}' passed to call command.`,
-          `If you intended to pass a tool argument, use '${token.slice(2)}=<value>' or --args '{"${token.slice(2)}": ...}'.`,
-          "If you intended to pass a literal positional value, insert '--' before it.",
-          "Run 'mcporter call --help' to see available flags.",
-        ].join('\n')
-      );
+      throw new CliUsageError(buildUnknownCallFlagMessage(token));
     }
     positional.push(token);
     index += 1;
   }
+  return { positional, literalPositional };
+}
 
-  let callExpressionProvidedServer = false;
-  let callExpressionProvidedTool = false;
-
-  if (positional.length > 0) {
-    const rawToken = positional[0] ?? '';
-    const callExpression = parseLeadingCallExpression(rawToken);
-    if (callExpression) {
-      positional.shift();
-      callExpressionProvidedServer = Boolean(callExpression.server);
-      callExpressionProvidedTool = Boolean(callExpression.tool);
-      if (callExpression.server) {
-        if (result.server && result.server !== callExpression.server) {
-          throw new Error(
-            `Conflicting server names: '${result.server}' from flags and '${callExpression.server}' from call expression.`
-          );
-        }
-        result.server = result.server ?? callExpression.server;
-      }
-      if (result.tool && result.tool !== callExpression.tool) {
-        throw new Error(
-          `Conflicting tool names: '${result.tool}' from flags and '${callExpression.tool}' from call expression.`
-        );
-      }
-      result.tool = callExpression.tool;
-      Object.assign(result.args, callExpression.args);
-      if (callExpression.positionalArgs && callExpression.positionalArgs.length > 0) {
-        result.positionalArgs = [...(result.positionalArgs ?? []), ...callExpression.positionalArgs];
-      }
-    }
+function applyLeadingCallExpression(positional: string[], result: CallArgsParseResult): CallExpressionResolution {
+  if (positional.length === 0) {
+    return { callExpressionProvidedServer: false, callExpressionProvidedTool: false };
   }
+  const rawToken = positional[0] ?? '';
+  const callExpression = parseLeadingCallExpression(rawToken);
+  if (!callExpression) {
+    return { callExpressionProvidedServer: false, callExpressionProvidedTool: false };
+  }
+  positional.shift();
+  if (callExpression.server) {
+    if (result.server && result.server !== callExpression.server) {
+      throw new Error(
+        `Conflicting server names: '${result.server}' from flags and '${callExpression.server}' from call expression.`
+      );
+    }
+    result.server = result.server ?? callExpression.server;
+  }
+  if (result.tool && result.tool !== callExpression.tool) {
+    throw new Error(
+      `Conflicting tool names: '${result.tool}' from flags and '${callExpression.tool}' from call expression.`
+    );
+  }
+  result.tool = callExpression.tool;
+  Object.assign(result.args, callExpression.args);
+  if (callExpression.positionalArgs && callExpression.positionalArgs.length > 0) {
+    result.positionalArgs = [...(result.positionalArgs ?? []), ...callExpression.positionalArgs];
+  }
+  return {
+    callExpressionProvidedServer: Boolean(callExpression.server),
+    callExpressionProvidedTool: Boolean(callExpression.tool),
+  };
+}
 
+function resolveSelectorAndTool(
+  positional: string[],
+  result: CallArgsParseResult,
+  callExpressionProvidedServer: boolean,
+  callExpressionProvidedTool: boolean
+): void {
   if (!result.selector && positional.length > 0 && !callExpressionProvidedServer && !result.server) {
     result.selector = positional.shift();
   }
-
   if (
     !result.server &&
     result.selector &&
     shouldPromoteSelectorToCommand(result.selector) &&
     !result.ephemeral?.stdioCommand
   ) {
-    // Treat the first positional token as an ad-hoc stdio command when it looks like
-    // `npx ...`/`./script`/etc., so users can skip `--stdio` entirely.
     result.ephemeral = { ...result.ephemeral, stdioCommand: result.selector };
     result.selector = undefined;
   }
-
   const nextPositional = positional[0];
   if (
     !result.tool &&
@@ -149,7 +169,9 @@ export function parseCallArguments(args: string[]): CallArgsParseResult {
   ) {
     result.tool = positional.shift();
   }
+}
 
+function applyTrailingArguments(positional: string[], result: CallArgsParseResult, state: FlagParseState): void {
   const trailingPositional: unknown[] = [];
   for (let index = 0; index < positional.length; ) {
     const token = positional[index];
@@ -159,12 +181,12 @@ export function parseCallArguments(args: string[]): CallArgsParseResult {
     }
     const parsed = parseKeyValueToken(token, positional[index + 1]);
     if (!parsed) {
-      trailingPositional.push(coerceValue(token, flagState.coercionMode));
+      trailingPositional.push(coerceValue(token, state.coercionMode));
       index += 1;
       continue;
     }
     index += parsed.consumed;
-    const value = coerceValue(parsed.rawValue, flagState.coercionMode);
+    const value = coerceValue(parsed.rawValue, state.coercionMode);
     if (parsed.key === 'tool' && !result.tool) {
       if (typeof value !== 'string') {
         throw new Error("Argument 'tool' must be a string value.");
@@ -184,13 +206,20 @@ export function parseCallArguments(args: string[]): CallArgsParseResult {
   if (trailingPositional.length > 0) {
     result.positionalArgs = [...(result.positionalArgs ?? []), ...trailingPositional];
   }
-  if (literalPositional.length > 0) {
-    result.positionalArgs = [
-      ...(result.positionalArgs ?? []),
-      ...literalPositional.map((token) => coerceValue(token, flagState.coercionMode)),
-    ];
+}
+
+function appendLiteralPositionalArguments(
+  literalPositional: string[],
+  result: CallArgsParseResult,
+  state: FlagParseState
+): void {
+  if (literalPositional.length === 0) {
+    return;
   }
-  return result;
+  result.positionalArgs = [
+    ...(result.positionalArgs ?? []),
+    ...literalPositional.map((token) => coerceValue(token, state.coercionMode)),
+  ];
 }
 
 function handleServerFlag(context: FlagHandlerContext): number {

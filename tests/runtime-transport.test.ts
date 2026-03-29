@@ -28,59 +28,32 @@ import type { ServerDefinition } from '../src/config.js';
 import * as oauthModule from '../src/oauth.js';
 import { markOAuthFlowError, markPostAuthConnectError } from '../src/runtime/oauth.js';
 import { createClientContext } from '../src/runtime/transport.js';
+import {
+  clientInfo,
+  createLogger,
+  createMockOAuthSession,
+  createPromotionRecorder,
+  resetLogger,
+  stubHttpDefinition,
+  stubOAuthHttpDefinition,
+} from './helpers/runtime-test-helpers.js';
 
-const logger = {
-  info: vi.fn(),
-  warn: vi.fn(),
-  error: vi.fn(),
-};
-
-const clientInfo = { name: 'mcporter', version: '0.0.0-test' };
+const logger = createLogger();
 
 beforeEach(() => {
+  resetLogger(logger);
   mocks.connectWithAuth.mockReset();
   mocks.connectWithAuth.mockImplementation(async (client, transport) => {
     await client.connect(transport);
     return transport;
   });
   mocks.createOAuthSession.mockReset();
-  mocks.createOAuthSession.mockResolvedValue({
-    provider: {
-      waitForAuthorizationCode: vi.fn(),
-    },
-    waitForAuthorizationCode: vi.fn(),
-    close: vi.fn(async () => {}),
-  });
+  mocks.createOAuthSession.mockResolvedValue(createMockOAuthSession());
 });
 
 afterEach(() => {
   vi.restoreAllMocks();
 });
-
-function stubHttpDefinition(url: string): ServerDefinition {
-  return {
-    name: 'http-server',
-    command: { kind: 'http', url: new URL(url) },
-    source: { kind: 'local', path: '<adhoc>' },
-  };
-}
-
-function stubOAuthHttpDefinition(url: string): ServerDefinition {
-  return {
-    ...stubHttpDefinition(url),
-    auth: 'oauth',
-  };
-}
-
-function createPromotionRecorder() {
-  const promotedDefinitions: ServerDefinition[] = [];
-  return {
-    promotedDefinitions,
-    onDefinitionPromoted: (promoted: ServerDefinition) => {
-      promotedDefinitions.push(promoted);
-    },
-  };
-}
 
 describe('createClientContext (HTTP)', () => {
   it('falls back to SSE when primary connect fails', async () => {
