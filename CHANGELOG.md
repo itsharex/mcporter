@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Nothing yet.
+
+## [0.8.0] - 2026-03-29
+
 ### CLI
 - Preserve OAuth flow vs post-auth transport failures so invalid OAuth/provider errors surface directly, while real legacy 404/405 transport mismatches still fall back to SSE correctly. (PR #97, thanks @mavam)
 - Ignore static `Authorization` headers once OAuth is active so imported editor configs cannot override fresh OAuth tokens. (PR #123, thanks @ahonn)
