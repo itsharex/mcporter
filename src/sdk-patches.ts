@@ -129,7 +129,7 @@ function waitForChildClose(child: MaybeChildProcess | undefined, timeoutMs: numb
   ) {
     return Promise.resolve();
   }
-  return new Promise((resolve) => {
+  return new Promise<void>((resolve, reject) => {
     let settled = false;
     try {
       child.on?.('error', ignoreEmitterError);
@@ -143,6 +143,14 @@ function waitForChildClose(child: MaybeChildProcess | undefined, timeoutMs: numb
       settled = true;
       cleanup();
       resolve();
+    };
+    const timeout = () => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      cleanup();
+      reject(new Error(`Timed out waiting ${timeoutMs}ms for child process to close.`));
     };
     const cleanup = () => {
       child.removeListener('exit', finish);
@@ -162,7 +170,7 @@ function waitForChildClose(child: MaybeChildProcess | undefined, timeoutMs: numb
     child.once('error', finish);
     let timer: NodeJS.Timeout | undefined;
     if (Number.isFinite(timeoutMs) && timeoutMs > 0) {
-      timer = setTimeout(finish, timeoutMs);
+      timer = setTimeout(timeout, timeoutMs);
       timer.unref?.();
     }
   });

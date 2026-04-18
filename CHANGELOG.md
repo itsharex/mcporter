@@ -4,6 +4,7 @@
 
 ### CLI
 
+- Escalate stuck stdio child-process shutdowns after close timeouts instead of treating the timeout as a clean exit. (PR #39, thanks @tonylampada)
 - Quote OAuth browser URLs when launching `cmd.exe` on Windows, preserving query parameters such as `redirect_uri`. (PR #136, thanks @cosminilie)
 - Document OAuth-protected server config setup with `mcporter config add --auth oauth` and `mcporter auth`. (PR #34, thanks @prateek)
 - Respect schema-declared string parameters when coercing numeric-looking `mcporter call` key=value arguments, so Slack timestamps like `thread_ts` stay strings. (PR #141, thanks @Hamzaa6296)

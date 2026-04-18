@@ -57,7 +57,7 @@ async function waitForChildClose(child: ChildProcess, timeoutMs: number): Promis
   ) {
     return;
   }
-  await new Promise<void>((resolve) => {
+  await new Promise<void>((resolve, reject) => {
     let settled = false;
     const finish = () => {
       if (settled) {
@@ -66,6 +66,14 @@ async function waitForChildClose(child: ChildProcess, timeoutMs: number): Promis
       settled = true;
       cleanup();
       resolve();
+    };
+    const timeout = () => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      cleanup();
+      reject(new Error(`Timed out waiting ${timeoutMs}ms for child process to close.`));
     };
     const cleanup = () => {
       child.removeListener('close', finish);
@@ -80,7 +88,7 @@ async function waitForChildClose(child: ChildProcess, timeoutMs: number): Promis
     child.once('error', finish);
     let timer: NodeJS.Timeout | undefined;
     if (Number.isFinite(timeoutMs) && timeoutMs > 0) {
-      timer = setTimeout(finish, timeoutMs);
+      timer = setTimeout(timeout, timeoutMs);
       timer.unref?.();
     }
   });
@@ -298,6 +306,7 @@ function collectDescendantsFromChildren(rootPid: number, children: Map<number, n
 
 export const __testHooks = {
   listDescendantPids,
+  waitForChildClose,
 };
 
 async function waitForTreeExit(pids: number[], durationMs: number): Promise<boolean> {
